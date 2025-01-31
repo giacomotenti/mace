@@ -65,6 +65,7 @@ class HDF5Dataset(Dataset):
             config_type=unpack_value(subgrp["config_type"][()]),
             pbc=unpack_value(subgrp["pbc"][()]),
             cell=unpack_value(subgrp["cell"][()]),
+            atomic=unpack_value(subgrp["atomic"][()]),
         )
         atomic_data = AtomicData.from_config(
             config, z_table=self.z_table, cutoff=self.r_max

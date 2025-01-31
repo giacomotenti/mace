@@ -14,6 +14,12 @@ import h5py
 import numpy as np
 
 from mace.tools import AtomicNumberTable
+from scipy.optimize import curve_fit as fit	
+						
+#load modules for classify				
+from ase.io import iread			
+from ase import Atoms 				
+from ase.geometry.analysis import Analysis	
 
 Vector = np.ndarray  # [3,]
 Positions = np.ndarray  # [..., 3]
@@ -40,7 +46,8 @@ class Configuration:
     charges: Optional[Charges] = None  # atomic unit
     cell: Optional[Cell] = None
     pbc: Optional[Pbc] = None
-
+    atomic: Optional[float] = None
+    
     weight: float = 1.0  # weight of config in loss
     energy_weight: float = 1.0  # weight of config energy in loss
     forces_weight: float = 1.0  # weight of config forces in loss
@@ -170,8 +177,25 @@ def config_from_atoms(
         config_type=config_type,
         pbc=pbc,
         cell=cell,
+        atomic = 1 - classify(atoms)
     )
 
+def rdf_approx(x , eps , ps , ploc, c):
+    return ps * np.exp(-(x - ploc)**2 / eps ) + c * x**4
+
+def classify(conf , peak_strength_tol= 1.8, rmax_peak = 1.3):
+    imol = 0
+    rdf = Analysis(conf).get_rdf(rmax_peak, 40, return_dists=True)[0]
+    ploc_try = min(0.85 , rdf[1][np.argmax(rdf[0])])
+    ps_try = np.amax(rdf[0])
+    eps_try = min(-(rdf[1][2] - rdf[1][0])**2 / np.log(1.0e-10 + rdf[0][np.argmax(rdf[0])-2] / ps_try ), 1.0)
+    c_try = min(rdf[0][-1] / rmax_peak**4,50)
+    coeff , cov = fit(rdf_approx , rdf[1], rdf[0], p0 = [eps_try ,ps_try , ploc_try , c_try],\
+            bounds = ([0, 0.1, 0.4, 0.0],[2, 100, rmax_peak, 100]), maxfev = 25000, ftol = 1.e-4)
+    eps , ps , ploc , c = coeff
+    if rdf_approx(ploc, eps, ps , ploc , c) > peak_strength_tol and ploc < rmax_peak: #value of the approximant at x = ploc
+        imol = 1
+    return imol
 
 def test_config_types(
     test_configs: Configurations,
@@ -329,6 +353,7 @@ def save_dataset_as_HDF5(dataset: List, out_name: str) -> None:
             grp["virials"] = data.virials
             grp["dipole"] = data.dipole
             grp["charges"] = data.charges
+            grp["atomic"] = data.atomic
 
 
 def save_AtomicData_to_HDF5(data, i, h5_file) -> None:
@@ -351,6 +376,7 @@ def save_AtomicData_to_HDF5(data, i, h5_file) -> None:
     grp["virials"] = data.virials
     grp["dipole"] = data.dipole
     grp["charges"] = data.charges
+    grp["atomic"] = data.atomic
 
 
 def save_configurations_as_HDF5(configurations: Configurations, _, h5_file) -> None:
@@ -374,6 +400,7 @@ def save_configurations_as_HDF5(configurations: Configurations, _, h5_file) -> N
         subgroup["stress_weight"] = write_value(config.stress_weight)
         subgroup["virials_weight"] = write_value(config.virials_weight)
         subgroup["config_type"] = write_value(config.config_type)
+        subgroup["atomic"] = write_value(config.atomic)
 
 
 def write_value(value):

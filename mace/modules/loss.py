@@ -5,7 +5,7 @@
 ###########################################################################################
 
 import torch
-
+import logging
 from mace.tools import TensorDict
 from mace.tools.torch_geometric import Batch
 
@@ -26,6 +26,23 @@ def weighted_mean_squared_error_energy(ref: Batch, pred: TensorDict) -> torch.Te
         * torch.square((ref["energy"] - pred["energy"]) / num_atoms)
     )  # []
 
+#def absolute_error_energies(ref: Batch, pred: TensorDict) -> torch.Tensor:
+#    # energy: [n_graphs, ]
+#    configs_weight_atom = ref.atomic  # [n_graphs, ]
+#    configs_weight_mol = 1 - ref.atomic
+#    configs_energy_weight = ref.energy_weight  # [n_graphs, ]
+#    num_atoms = ref.ptr[1:] - ref.ptr[:-1]  # [n_graphs,]
+#    return 2.0 * (torch.absolute(torch.sum(configs_weight_atom*(ref["energy"] - pred["energy"]))) * torch.sum(configs_weight_atom)/(torch.sum(configs_weight_atom) + torch.sum(configs_weight_mol)) +   torch.absolute(torch.sum(configs_weight_mol*(ref["energy"] - pred["energy"]))) * torch.sum(configs_weight_mol)/(torch.sum(configs_weight_atom) + torch.sum(configs_weight_mol)))
+
+
+def absolute_error_energies(ref: Batch, pred: TensorDict) -> torch.Tensor:
+    # energy: [n_graphs, ]
+    configs_weight_atom = ref.atomic  # [n_graphs, ]
+    configs_weight_mol = 1 - ref.atomic
+    configs_energy_weight = ref.energy_weight  # [n_graphs, ]
+    num_atoms = ref.ptr[1:] - ref.ptr[:-1]  # [n_graphs,]
+    #return  50.0*(torch.absolute(torch.sum(configs_weight_atom*(ref["energy"] - pred["energy"]) / num_atoms)) +   torch.absolute(torch.sum(configs_weight_mol* (ref["energy"] - pred["energy"]) / num_atoms)) ) / (torch.sum(configs_weight_atom) + torch.sum(configs_weight_mol))  
+    return  50.0*(torch.absolute(torch.sum(configs_weight_mol* (ref["energy"] - pred["energy"]) / num_atoms)) ) / (torch.sum(configs_weight_atom) + torch.sum(configs_weight_mol))  
 
 def weighted_mean_squared_stress(ref: Batch, pred: TensorDict) -> torch.Tensor:
     # energy: [n_graphs, ]
@@ -150,6 +167,7 @@ def conditional_huber_forces(
 class WeightedEnergyForcesLoss(torch.nn.Module):
     def __init__(self, energy_weight=1.0, forces_weight=1.0) -> None:
         super().__init__()
+        logging.info("WEIGHTED ENERGY FORCE LOSS")
         self.register_buffer(
             "energy_weight",
             torch.tensor(energy_weight, dtype=torch.get_default_dtype()),
@@ -160,10 +178,9 @@ class WeightedEnergyForcesLoss(torch.nn.Module):
         )
 
     def forward(self, ref: Batch, pred: TensorDict) -> torch.Tensor:
-        return self.energy_weight * weighted_mean_squared_error_energy(
+        return self.energy_weight * (weighted_mean_squared_error_energy(
             ref, pred
-        ) + self.forces_weight * mean_squared_error_forces(ref, pred)
-
+        ) + absolute_error_energies(ref,pred)) + self.forces_weight * mean_squared_error_forces(ref, pred) 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(energy_weight={self.energy_weight:.3f}, "
@@ -204,10 +221,10 @@ class WeightedEnergyForcesStressLoss(torch.nn.Module):
 
     def forward(self, ref: Batch, pred: TensorDict) -> torch.Tensor:
         return (
-            self.energy_weight * weighted_mean_squared_error_energy(ref, pred)
+            self.energy_weight *( weighted_mean_squared_error_energy(ref, pred)+ absolute_error_energies(ref,pred))
+
             + self.forces_weight * mean_squared_error_forces(ref, pred)
-            + self.stress_weight * weighted_mean_squared_stress(ref, pred)
-        )
+            + self.stress_weight * weighted_mean_squared_stress(ref, pred)         )
 
     def __repr__(self):
         return (
@@ -308,9 +325,9 @@ class WeightedEnergyForcesVirialsLoss(torch.nn.Module):
 
     def forward(self, ref: Batch, pred: TensorDict) -> torch.Tensor:
         return (
-            self.energy_weight * weighted_mean_squared_error_energy(ref, pred)
+            self.energy_weight * (weighted_mean_squared_error_energy(ref, pred)+ absolute_error_energies(ref,pred))
             + self.forces_weight * mean_squared_error_forces(ref, pred)
-            + self.virials_weight * weighted_mean_squared_virials(ref, pred)
+            + self.virials_weight * weighted_mean_squared_virials(ref, pred) 
         )
 
     def __repr__(self):
