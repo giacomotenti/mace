@@ -7,7 +7,7 @@
 [![Documentation Status](https://readthedocs.org/projects/mace/badge/)](https://mace-docs.readthedocs.io/en/latest/)
 
 ## Table of contents
-
+- [About this version](#thisfork)
 - [MACE](#mace)
   - [Table of contents](#table-of-contents)
   - [About MACE](#about-mace)
@@ -31,6 +31,13 @@
   - [References](#references)
   - [Contact](#contact)
   - [License](#license)
+
+## About this version
+The following is a modified version of MACE, with a modified loss function for training. This code was used to train a model for studying high-pressure hydrogen phase transition (see [doi to be inserted]). You can compile it as the standard version of MACE. 
+*IMPORTANT*: The modified code (branch : mod_loss) should be used for training the model only, since it may add a quite large overhead to MACE initialization. Once you trained the model, please use a "standard" version of MACE to perform the predictions. 
+
+The modified loss is implemented in `mace/modules/loss.py`. The relevant function is `absolute_error_energies` . By editing this function you can tune the relative importance of the additional penalty. 
+The classification between atomic / molecular environment is implemented in the `classify` function in `mace/data/utils.py`. Here you can tune the parameters and change the criteria. 
 
 ## About MACE
 
